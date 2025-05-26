@@ -1,0 +1,13 @@
+---
+
+- name: Include manage packages tasks
+  ansible.builtin.include_tasks: manage_packages.yml
+  when: hardener_manage_packages
+
+- name: Include auditing tasks
+  ansible.builtin.include_tasks: audit.yml
+  when: hardener_audit_system
+
+- name: Include hardening tasks
+  ansible.builtin.include_tasks: harden.yml
+  when: hardener_remediate_system

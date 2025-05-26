@@ -1,0 +1,12 @@
+---
+
+hardener_audit_system: true
+hardener_remediate_system: false
+hardener_manage_packages: true
+
+hardener_profile: "xccdf_org.ssgproject.content_profile_cis_server_l1"
+hardener_ssg_ds_file: /usr/share/xml/scap/ssg/content/ssg-almalinux9-ds.xml
+hardener_output_dir: "/var/log/hardener"
+hardener_timestamp_format: "%Y-%m-%dT%H:%M:%SZ"
+
+hardener_ignore_remediate_tasks: []

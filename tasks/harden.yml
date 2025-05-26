@@ -1,0 +1,94 @@
+---
+
+- name: Ensure SCAP datastream path is set
+  ansible.builtin.set_fact:
+    hardener_datastream: >-
+      {{ hardener_datastream | default('/usr/share/xml/scap/ssg/content/ssg-' + (ansible_facts.distribution | lower) + ansible_facts.distribution_major_version + '-ds.xml') }}
+
+- name: Verify that SCAP datastream exists on target
+  ansible.builtin.stat:
+    path: "{{ hardener_datastream }}"
+  register: hardener_datastream_stat
+  failed_when: not hardener_datastream_stat.stat.exists
+
+- name: Generate host‑specific OpenSCAP remediation playbook
+  ansible.builtin.command: >-
+    oscap xccdf generate fix --profile {{ hardener_profile }} --fix-type ansible {{ hardener_datastream }}
+  register: hardener_fix_result
+  changed_when: false
+  failed_when:
+    - hardener_fix_result.rc != 0
+    - hardener_fix_result.stdout | length == 0
+
+- name: Save remediation playbook on target host
+  ansible.builtin.copy:
+    content: "{{ hardener_fix_result.stdout }}"
+    dest: "/tmp/hardener_remediate_{{ inventory_hostname }}.yml"
+    mode: '0644'
+
+- name: Ensure local directory for generated playbook exists
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/.hardener"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  run_once: true
+
+- name: Fetch remediation playbook to controller
+  ansible.builtin.fetch:
+    src: "/tmp/hardener_remediate_{{ inventory_hostname }}.yml"
+    dest: "{{ playbook_dir }}/.hardener/"
+    flat: true
+
+- name: Load remediation playbook into variable
+  ansible.builtin.set_fact:
+    hardener_parsed_play: >-
+      {{ lookup('file', playbook_dir + '/.hardener/hardener_remediate_' + inventory_hostname + '.yml') | from_yaml }}
+  delegate_to: localhost
+
+- name: Extract vars and tasks from parsed play
+  ansible.builtin.set_fact:
+    hardener_vars: "{{ (hardener_parsed_play[0].vars | default({})) }}"
+    hardener_tasks: "{{ hardener_parsed_play[0].tasks }}"
+  delegate_to: localhost
+
+- name: Write extracted vars file
+  ansible.builtin.copy:
+    content: "{{ hardener_vars | to_nice_yaml(indent=2) }}"
+    dest: "{{ playbook_dir }}/.hardener/hardener_vars_{{ inventory_hostname }}.yml"
+    mode: '0600'
+  delegate_to: localhost
+  when: hardener_vars | length > 0
+
+- name: Write extracted ansible tasks file
+  ansible.builtin.copy:
+    content: "{{ hardener_tasks | to_nice_yaml(indent=2) }}"
+    dest: "{{ playbook_dir }}/.hardener/hardener_tasks_{{ inventory_hostname }}.yml"
+    mode: '0600'
+  delegate_to: localhost
+
+- name: Load remediation vars
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/.hardener/hardener_vars_{{ inventory_hostname }}.yml"
+  when: hardener_vars | length > 0
+
+- name: Include and execute remediation tasks
+  ansible.builtin.include_tasks:
+    file: "{{ playbook_dir }}/.hardener/hardener_tasks_{{ inventory_hostname }}.yml"
+
+- name: Remove temporary files on target
+  ansible.builtin.file:
+    path: "/tmp/hardener_remediate_{{ inventory_hostname }}.yml"
+    state: absent
+  when: (hardener_cleanup | default(true)) | bool
+
+- name: Remove temporary files on controller
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  delegate_to: localhost
+  loop:
+    - "{{ playbook_dir }}/.hardener/hardener_remediate_{{ inventory_hostname }}.yml"
+    - "{{ playbook_dir }}/.hardener/hardener_vars_{{ inventory_hostname }}.yml"
+    - "{{ playbook_dir }}/.hardener/hardener_tasks_{{ inventory_hostname }}.yml"
+  when: (hardener_cleanup | default(true)) | bool

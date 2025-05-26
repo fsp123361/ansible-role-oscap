@@ -1,0 +1,38 @@
+---
+
+- name: Set timestamp fact
+  ansible.builtin.set_fact:
+    hardener_timestamp: "{{ lookup('pipe', 'date +%Y%m%d%H%M') }}"
+
+- name: Ensure output directory exists
+  ansible.builtin.file:
+    path: "{{ hardener_output_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Run OpenSCAP audit
+  ansible.builtin.command: >-
+    oscap xccdf eval
+    --profile {{ hardener_profile }}
+    --results {{ hardener_output_dir }}/{{ hardener_timestamp }}-eval_results.xml
+    --results-arf {{ hardener_output_dir }}/{{ hardener_timestamp }}-eval_arf.xml
+    --report {{ hardener_output_dir }}/{{ hardener_timestamp }}-report.html
+    /usr/share/xml/scap/ssg/content/ssg-almalinux9-ds.xml
+  register: hardener_audit_result
+  changed_when: false
+  failed_when: hardener_audit_result.rc not in [0, 2]
+
+- name: Convert ARF to JSON
+  ansible.builtin.shell: |
+    oscap-report -f JSON {{ hardener_output_dir }}/{{ hardener_timestamp }}-eval_arf.xml | \
+    jq -c '.rules[] | {timestamp: (now | strftime("%Y-%m-%dT%H:%M:%SZ")), rule_id, title, result, severity}' > \
+    {{ hardener_output_dir }}/{{ hardener_timestamp }}-eval_arf.json
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Print audit summary
+  ansible.builtin.debug:
+    var: hardener_audit_result.stdout_lines

@@ -1,0 +1,25 @@
+---
+
+galaxy_info:
+  role_name: oscap
+  author: fsp123361
+  company: gibb
+  description: Harden hosts to CIS Benchmarks with OpenSCAP. Supports audit-only and remediation modes.
+  license: MIT
+  min_ansible_version: "2.15"
+
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+
+  galaxy_tags:
+    - security
+    - hardening
+    - cis
+    - openscap
+    - almalinux
+    - guardianix
+
+dependencies: []
